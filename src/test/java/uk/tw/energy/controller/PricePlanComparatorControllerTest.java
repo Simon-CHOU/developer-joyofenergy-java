@@ -1,13 +1,17 @@
 package uk.tw.energy.controller;
 
+import static java.util.Arrays.asList;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.AbstractMap;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.time.Month;
+import java.time.ZoneOffset;
+import java.util.*;
+
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -39,7 +43,7 @@ public class PricePlanComparatorControllerTest {
 
         accountService = new AccountService(Map.of(SMART_METER_ID, WORST_PLAN_ID));
 
-        controller = new PricePlanComparatorController(pricePlanService, accountService);
+        controller = new PricePlanComparatorController(pricePlanService, accountService, meterReadingService);
     }
 
     @Test
@@ -115,5 +119,33 @@ public class PricePlanComparatorControllerTest {
                 new AbstractMap.SimpleEntry<>(SECOND_BEST_PLAN_ID, BigDecimal.valueOf(28.0)),
                 new AbstractMap.SimpleEntry<>(WORST_PLAN_ID, BigDecimal.valueOf(140.0)));
         assertThat(response.getBody()).isEqualTo(expectedPricePlanToCost);
+    }
+
+
+
+    @Test
+    public void getLastWeekCost_HappyPath() {
+        LocalDateTime lastWeekStart = LocalDateTime.of(2024, Month.NOVEMBER, 8, 0, 0, 0);
+        LocalDateTime lastWeekEnd = LocalDateTime.of(2024, Month.NOVEMBER, 14, 0, 0, 0);
+
+        ElectricityReading lastWeekStartReading = new ElectricityReading(lastWeekStart.toInstant(ZoneOffset.UTC), BigDecimal.TEN);
+        ElectricityReading lastWeekEndReading = new ElectricityReading(lastWeekEnd.toInstant(ZoneOffset.UTC), BigDecimal.valueOf(20.0));
+
+        meterReadingService.storeReadings("test-id", asList(lastWeekEndReading, lastWeekStartReading));
+
+        assertThat(controller.calculateCostLastWeekByMeterId("test-id").compareTo(BigDecimal.valueOf((double) (20 + 10) / 2 * 0.2 * 6 * 24))).isEqualTo(0);
+    }
+
+    @Test
+    public void getLastWeekCost_With_Exception() {
+        LocalDateTime lastWeekStart = LocalDateTime.of(2024, Month.NOVEMBER, 8, 0, 0, 0);
+        List<ElectricityReading> electricityReadings = new ArrayList<>();
+        ElectricityReading lastWeekStartReading = new ElectricityReading(lastWeekStart.toInstant(ZoneOffset.UTC), BigDecimal.TWO);
+        electricityReadings.add(lastWeekStartReading);
+
+        meterReadingService.storeReadings("test-id-sad", electricityReadings);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> controller.calculateCostLastWeekByMeterId("test-id-sad"));
+        Assertions.assertThat(exception.getMessage()).isEqualTo("没有足够的数据进行计算");
     }
 }
