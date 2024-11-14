@@ -17,9 +17,10 @@ java {
 }
 
 repositories {
-    mavenCentral()
+    maven {
+        url = uri("https://mirrors.huaweicloud.com/repository/maven/")
+    }
 }
-
 sourceSets {
     create("functionalTest") {
         java {
